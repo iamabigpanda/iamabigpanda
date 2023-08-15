@@ -1,0 +1,85 @@
+# Python API script – Convert inflow hydrograph .csv’s to FM .IED files.
+
+from pathlib import Path
+import pandas as pd
+import re
+import floodmodeller_api                                           # regular expression
+from floodmodeller_api import IED                   # unit classes
+from floodmodeller_api.units import QTBDY           # unit classes
+
+
+# Script to update for different storm durations (i.e., 38HR, ISD).
+# 38HR - 38HR Critical Storm Duration
+csv_folder = Path(r'C:\Projects\Melksham\final flows\Hydrology_IED_conversion_scripts_Final\Hydrology_IED_conversion_scripts_Final\output\formatted\ISD')             # Update folder path to specific storm duration csv directory. i.e., \formatted\38HR ...  Run one at a time (Lines 12, 14).
+# ISD - Individual Storm Duration
+#csv_folder = Path(r'C:\Users\BROO2245\Documents\Projects\5025139 - Melksham\.....')            # Update folder path to specific storm duration csv directory. i.e., \formatted\ISD ... Run one at a time (Lines 12, 14). 
+
+
+ied_files = {}                                  # creates empty dictionary - looping through each csv file in the designated csv folder
+
+# Iterate through each csv export
+for csv_file in csv_folder.glob("*"):
+    node_label = csv_file.stem
+
+    data = pd.read_csv(csv_file, index_col=0)                                  # sets index to first column which is zero (time)
+
+    def extract_return_period(column_name):
+      """Extracts the return period from a column name.
+
+      Args:
+        column_name: A column name.
+      Returns:
+        The return period as an integer.
+      """
+
+      match = re.search(r"\((.*?)\)", column_name)      # search for regular expression. Looking for number in brackets
+      if match:
+          return int(match.group(1).split(" ")[0])      # return the storm duration 
+      else:
+          return None
+
+    if __name__ == "__main__":
+      column_names = [
+          "Total flow m3/s (2 year)- urbanised model",
+          "Total flow m3/s (5 year)- urbanised model",
+          "Total flow m3/s (10 year)- urbanised model",
+          "Total flow m3/s (20 year)- urbanised model",
+          "Total flow m3/s (25 year)- urbanised model",
+          "Total flow m3/s (30 year)- urbanised model",
+          "Total flow m3/s (50 year)- urbanised model",
+          "Total flow m3/s (75 year)- urbanised model",
+          "Total flow m3/s (100 year)- urbanised model",
+          "Total flow m3/s (200 year)- urbanised model",
+          "Total flow m3/s (500 year)- urbanised model",
+          "Total flow m3/s (1000 year)- urbanised model",
+      ]
+
+      return_periods = []
+      for column_name in column_names:
+        return_period = extract_return_period(column_name)
+        if return_period is not None:
+          return_periods.append(return_period)
+      print("The return periods are:", return_periods)
+
+
+    # Iterate through each return period
+    for return_period in return_periods:
+        flow_data = data[f"Total flow m3/s ({return_period} year)- urbanised model"]
+        qtbdy = QTBDY(name=node_label, data=flow_data)  # Builds new QTBDY
+
+        if return_period not in ied_files:
+            ied_files[return_period] = {}
+            ied = IED()  # Create new ied file                                                          # Added from storm_duration logical block
+            #ied.save(Path(csv_folder.parent, "output", f"Q{return_period}.ied"))                       # Added from storm_duration logical block
+            ied.save(Path(csv_folder.parent, "output_ieds", f"Q{return_period}.ied"))                   # Added from storm_duration logical block
+            ied_files[return_period] = ied                                                              # Added from storm_duration logical block
+
+#        if storm_duration not in ied_files[return_period]:                                             # Commented out as steps manually done in prior scripts 
+#           ied = IED()  # Create new ied file                                                          # Commented out as steps manually done in prior scripts 
+#           ied.save(Path(csv_folder.parent, "output", f"Q{return_period}_{storm_duration}.ied"))       # Commented out as steps manually done in prior scripts 
+#           ied_files[return_period][storm_duration] = ied                                              # Commented out as steps manually done in prior scripts 
+
+        ied = ied_files[return_period]
+        ied.boundaries[node_label] = qtbdy  # Add qtbdy unit into IED
+        ied.update()  # Update IED file on disk
+
